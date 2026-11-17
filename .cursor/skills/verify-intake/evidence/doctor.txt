@@ -1,0 +1,5 @@
+window 结构式提取原型
+pid 44468
+launch started
+schemes vector,raster,roundtrip,edgegrow,molnextr,inkpage
+doctor ok

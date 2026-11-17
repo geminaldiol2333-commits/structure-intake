@@ -1,0 +1,13 @@
+# generated / working data
+jobs/
+out/
+gt_pages/
+gt_check/
+__pycache__/
+*.pyc
+
+# verification runtime artifacts (evidence/ is kept)
+.cursor/skills/*/run/
+
+# MolGrapher leftovers that may appear in shared trees
+*_preprocessed.png

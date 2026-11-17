@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>结构式提取原型</title>
+<style>
+  :root {
+    --ink: #1c2430;
+    --muted: #5c6b7a;
+    --line: #d5dbe3;
+    --paper: #eef1f6;
+    --card: #ffffff;
+    --accent: #2457d6;
+    --accent-soft: #e7eeff;
+    --bad: #9a3412;
+    --bad-soft: #fff1e8;
+    --ok: #0f6b4c;
+    --ok-soft: #e5f6ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 14px 20px;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; font-weight: 650; margin: 0; }
+  header p { margin: 0; color: var(--muted); font-size: 12px; }
+  .schemes { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; max-width: 720px; }
+  .schemes button, .copy, .edit {
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+  }
+  .schemes button.active { background: var(--accent); color: white; border-color: var(--accent); }
+  main { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 64px); }
+  nav { padding: 12px; border-right: 1px solid var(--line); background: #f7f8fb; }
+  nav button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    margin: 0 0 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+  }
+  nav button.on { background: var(--card); border-color: var(--line); }
+  nav .pill { float: right; font-size: 11px; padding: 1px 6px; border-radius: 99px; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .pill.wait { background: #eee; color: var(--muted); }
+  section { padding: 16px 18px 32px; }
+  .summary { color: var(--muted); margin: 0 0 12px; max-width: 860px; }
+  .columns { display: grid; grid-template-columns: minmax(0, 1.5fr) 240px minmax(0, 0.8fr); gap: 12px; align-items: start; }
+  .columns.show-render { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 0.8fr); }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 180px; }
+  .panel h2 { margin: 0 0 8px; font-size: 13px; font-weight: 650; }
+  .panel img { max-width: 100%; height: auto; background: white; }
+  .reason { white-space: pre-wrap; }
+  .card { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .copy.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .edit:disabled { color: #9aa6b2; cursor: not-allowed; background: #f3f5f8; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .toast {
+    position: fixed; bottom: 16px; right: 16px;
+    background: var(--ink); color: white; padding: 10px 14px; border-radius: 8px;
+    display: none;
+  }
+  .compare { display: flex; gap: 8px; margin: 0 0 12px; }
+  .compare button { padding: 0; border: 1px solid var(--line); background: white; border-radius: 8px; cursor: pointer; }
+  .compare button.on { border-color: var(--accent); }
+  .compare img { height: 72px; width: auto; display: block; border-radius: 8px; }
+  .compare span { display: block; font-size: 11px; padding: 4px 6px; color: var(--muted); }
+  .stage {
+    height: 520px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f4f6fa;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .stage .sheet {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    margin: 0;
+    aspect-ratio: var(--aspect);
+  }
+  .stage .sheet img { width: 100%; height: 100%; object-fit: fill; }
+  .pager {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .pager input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .sheet { position: relative; margin: 0 0 12px; }
+  .sheet img { display: block; width: 100%; height: auto; }
+  .frame {
+    position: absolute;
+    padding: 0;
+    border: 2px solid transparent;
+    background: transparent;
+  }
+  .frame::after {
+    content: attr(data-label);
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 0 4px;
+  }
+  .frame.hover { border-color: var(--accent); }
+  .frame.on { border-color: #c2410c; }
+  .frame.on::after { background: #c2410c; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>结构式提取</h1>
+    <p>可丢弃原型。选定之前不进入现有渲染管线。</p>
+  </div>
+  <div class="schemes" id="schemes"></div>
+</header>
+<main>
+  <nav id="nav"></nav>
+  <section id="view"></section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+let data = null;
+let schemeId = "edgegrow";
+let sampleId = "literature-pdf";
+let litPage = 0;
+let openFrame = null;
+let openHits = [];
+const KEPT = ["edgegrow", "molnextr"];
+
+async function main() {
+  const response = await fetch("out/results.json", { cache: "no-store" });
+  data = await response.json();
+  const bar = document.getElementById("schemes");
+  for (const scheme of keptSchemes()) {
+    const button = document.createElement("button");
+    button.textContent = scheme.label;
+    button.dataset.id = scheme.id;
+    button.onclick = () => { schemeId = scheme.id; resetOpen(); paint(); };
+    bar.appendChild(button);
+  }
+  document.addEventListener("keydown", (event) => {
+    const order = keptSchemes().map((scheme) => scheme.id);
+    const index = "12".indexOf(event.key);
+    if (index >= 0 && index < order.length) {
+      schemeId = order[index];
+      resetOpen();
+      paint();
+    }
+  });
+  paint();
+}
+
+function keptSchemes() {
+  return KEPT.filter((id) => data.schemes[id]).map((id) => data.schemes[id]);
+}
+
+function resetOpen() {
+  openFrame = null;
+  openHits = [];
+  litPage = 0;
+}
+
+function scheme() {
+  return data.schemes[schemeId] || keptSchemes()[0];
+}
+
+function sample() {
+  return scheme().samples.find((item) => item.id === sampleId) || scheme().samples[0];
+}
+
+function paint() {
+  for (const button of document.querySelectorAll(".schemes button")) {
+    button.classList.toggle("active", button.dataset.id === schemeId);
+  }
+  const nav = document.getElementById("nav");
+  nav.innerHTML = "";
+  for (const item of scheme().samples) {
+    const button = document.createElement("button");
+    button.className = item.id === sample().id ? "on" : "";
+    const pill = item.status === "rejected" ? "bad" : "ok";
+    const word = item.status === "rejected" ? "拒绝" : "有结构";
+    const match = item.status === item.expect ? "" : " · 与预期不符";
+    button.innerHTML = `${item.title}<span class="pill ${pill}">${word}${match}</span>`;
+    button.onclick = () => { sampleId = item.id; resetOpen(); paint(); };
+    nav.appendChild(button);
+  }
+  const current = sample();
+  const view = document.getElementById("view");
+  const source = sourceHtml(current);
+  const rejectHtml = current.status === "rejected"
+    ? `<p class="reason">${escapeHtml(current.reason)}</p>`
+    : `<p class="reason">未拒绝。${escapeHtml(current.reason)}</p>`;
+  const opened = openFrame ? " show-render" : "";
+  view.innerHTML = `
+    <p class="summary">${escapeHtml(scheme().summary)}</p>
+    <p class="meta">${escapeHtml(current.source_note || "")}</p>
+    <div class="columns${opened}">
+      <div class="panel"><h2>来源</h2>${source || "<p class='meta'>没有预览。</p>"}</div>
+      <div class="panel"><h2>渲染</h2><div id="render-body"></div></div>
+      <div class="panel"><h2>拒绝</h2>${rejectHtml}</div>
+    </div>`;
+  reveal();
+}
+
+function sourcePages(current) {
+  return (current.pages || []).map((page, pageIndex) => ({page, pageIndex})).filter((item) => item.page.source);
+}
+
+function sourceHtml(current) {
+  const items = sourcePages(current);
+  if (!items.length) return "<p class='meta'>没有预览。</p>";
+  if (current.id !== "literature-pdf") {
+    return items.map((item) => sheetHtml(item.page, item.pageIndex)).join("");
+  }
+  if (litPage >= items.length) litPage = 0;
+  const item = items[litPage];
+  const stage = `<div class="stage">${sheetHtml(item.page, item.pageIndex)}</div>`;
+  if (items.length < 2) return stage;
+  const name = item.page.page ? `第 ${item.page.page} 页` : `第 ${litPage + 1} 张`;
+  return `${stage}<label class="pager"><span class="pager-label">${name}</span><input type="range" min="0" max="${items.length - 1}" value="${litPage}" step="1" aria-label="文献页"><span class="pager-count">${litPage + 1} / ${items.length}</span></label>`;
+}
+
+function sheetHtml(page, pageIndex) {
+  if (!page.source) return "";
+  const frames = page.frames || [];
+  const width = page.width || 1;
+  const height = page.height || 1;
+  const boxes = frames.map((frame, frameIndex) => {
+    const box = frame.box;
+    const style = [
+      `left:${(100 * box[0] / width).toFixed(3)}%`,
+      `top:${(100 * box[1] / height).toFixed(3)}%`,
+      `width:${(100 * (box[2] - box[0]) / width).toFixed(3)}%`,
+      `height:${(100 * (box[3] - box[1]) / height).toFixed(3)}%`,
+    ].join(";");
+    const label = frameIndex + 1;
+    return `<button type="button" class="frame" style="${style}" data-page="${pageIndex}" data-frame="${frameIndex}" data-label="${label}" aria-label="识别框 ${label}"></button>`;
+  }).join("");
+  const aspect = `${width} / ${height}`;
+  return `<div class="sheet" data-page="${pageIndex}" style="--aspect: ${aspect}"><img src="${page.source}" alt="来源"><div class="frames">${boxes}</div></div>`;
+}
+
+function hitsAt(page, x, y) {
+  const hits = [];
+  for (const [index, frame] of (page.frames || []).entries()) {
+    const box = frame.box;
+    if (x < box[0] || y < box[1] || x > box[2] || y > box[3]) continue;
+    hits.push({index, area: (box[2] - box[0]) * (box[3] - box[1])});
+  }
+  hits.sort((left, right) => left.area - right.area || left.index - right.index);
+  return hits.map((hit) => hit.index);
+}
+
+function chooseFrame(pageIndex, hits) {
+  if (!hits.length) return;
+  const sameStack = openFrame && openFrame.page === pageIndex && hits.includes(openFrame.frame);
+  if (sameStack && hits.length === 1) {
+    openFrame = null;
+    openHits = [];
+  } else if (sameStack) {
+    const pos = hits.indexOf(openFrame.frame);
+    openFrame = {page: pageIndex, frame: hits[(pos + 1) % hits.length]};
+    openHits = hits;
+  } else {
+    openFrame = {page: pageIndex, frame: hits[0]};
+    openHits = hits;
+  }
+  reveal();
+}
+
+function reveal() {
+  const columns = document.querySelector(".columns");
+  if (columns) columns.classList.toggle("show-render", Boolean(openFrame));
+  for (const node of document.querySelectorAll(".frame")) {
+    const on = openFrame && Number(node.dataset.page) === openFrame.page && Number(node.dataset.frame) === openFrame.frame;
+    node.classList.toggle("on", on);
+  }
+  const body = document.getElementById("render-body");
+  if (!body) return;
+  const pages = sample().pages || [];
+  const anyFrames = pages.some((page) => (page.frames || []).length);
+  if (!openFrame) {
+    body.innerHTML = anyFrames
+      ? "<p class='meta'>点左边的识别框，展开对应的渲染。</p>"
+      : "<p class='meta'>这一方案没有可点的识别框。</p>";
+    return;
+  }
+  const page = pages[openFrame.page];
+  const frame = (page.frames || [])[openFrame.frame];
+  if (!frame || frame.structure == null) {
+    body.innerHTML = "<p class='meta'>这个框没有对应的渲染。</p>";
+    return;
+  }
+  const overlap = openHits.length > 1
+    ? `<p class="meta">这里叠着 ${openHits.length} 个框。再点一次，换成下一个。</p>`
+    : "";
+  body.innerHTML = overlap + card(page.structures[frame.structure], frame.structure, openFrame.page);
+}
+
+function card(structure, index, pageIndex) {
+  const mark = ` data-page="${pageIndex}" data-structure="${index}"`;
+  if (!structure || !structure.ok) {
+    const failed = structure && structure.render ? `<img src="${structure.render}" alt="未采用的渲染">` : "";
+    return `<div class="card"${mark}>${failed}<p class="meta">结构 ${index + 1} 被拒绝。${escapeHtml((structure && structure.reason) || "")}</p></div>`;
+  }
+  const aliases = (structure.aliases || []).slice(0, 8).join(", ");
+  return `<div class="card"${mark}>
+    <img src="${structure.render}" alt="渲染 ${index + 1}">
+    <p class="meta">原子 ${structure.n_atoms || ""}${structure.confidence != null ? " · 置信度 " + structure.confidence : ""}${aliases ? " · 缩写 " + escapeHtml(aliases) : ""}</p>
+    <div class="actions">
+      <button class="copy primary" data-kind="mol">复制 MOL</button>
+      <button class="copy" data-kind="smiles">复制 SMILES</button>
+      <button class="copy" data-kind="smarts">复制 SMARTS</button>
+      <button class="edit" disabled title="人工编辑通道先留着，这一版不开放">人工编辑</button>
+    </div>
+  </div>`;
+}
+
+document.getElementById("view").addEventListener("input", (event) => {
+  const slider = event.target.closest(".pager input");
+  if (!slider) return;
+  const next = Number(slider.value);
+  if (next === litPage) return;
+  litPage = next;
+  openFrame = null;
+  openHits = [];
+  const items = sourcePages(sample());
+  const item = items[litPage];
+  const stage = document.querySelector(".stage");
+  if (stage && item) stage.innerHTML = sheetHtml(item.page, item.pageIndex);
+  const label = document.querySelector(".pager-label");
+  const count = document.querySelector(".pager-count");
+  if (label && item) label.textContent = item.page.page ? `第 ${item.page.page} 页` : `第 ${litPage + 1} 张`;
+  if (count) count.textContent = `${litPage + 1} / ${items.length}`;
+  reveal();
+});
+
+document.getElementById("view").addEventListener("click", async (event) => {
+  const frameNode = event.target.closest(".frame");
+  if (frameNode && event.detail === 0) {
+    chooseFrame(Number(frameNode.dataset.page), [Number(frameNode.dataset.frame)]);
+    return;
+  }
+  const sheet = event.target.closest(".sheet");
+  if (sheet) {
+    const image = sheet.querySelector("img");
+    const rect = image.getBoundingClientRect();
+    if (!image.naturalWidth || rect.width < 1) return;
+    const x = (event.clientX - rect.left) * image.naturalWidth / rect.width;
+    const y = (event.clientY - rect.top) * image.naturalHeight / rect.height;
+    const pageIndex = Number(sheet.dataset.page);
+    chooseFrame(pageIndex, hitsAt(sample().pages[pageIndex], x, y));
+    return;
+  }
+  const button = event.target.closest(".copy");
+  if (!button) return;
+  const cardNode = button.closest(".card");
+  const page = sample().pages[Number(cardNode.dataset.page)];
+  const structure = page.structures[Number(cardNode.dataset.structure)];
+  const kind = button.dataset.kind;
+  const text = kind === "mol" ? (structure.mol || "") : kind === "smiles" ? (structure.smiles || "") : (structure.smarts || "");
+  const response = await fetch("/api/copy", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({kind, text, clip: kind === "mol" ? structure.clip_file : ""})
+  });
+  const payload = await response.json();
+  const toast = document.getElementById("toast");
+  toast.textContent = payload.message || "已复制";
+  toast.style.display = "block";
+  setTimeout(() => { toast.style.display = "none"; }, 2200);
+});
+
+document.getElementById("view").addEventListener("mousemove", (event) => {
+  const sheet = event.target.closest(".sheet");
+  for (const node of document.querySelectorAll(".frame.hover")) node.classList.remove("hover");
+  if (!sheet) return;
+  const image = sheet.querySelector("img");
+  const rect = image.getBoundingClientRect();
+  if (!image.naturalWidth || rect.width < 1) return;
+  const x = (event.clientX - rect.left) * image.naturalWidth / rect.width;
+  const y = (event.clientY - rect.top) * image.naturalHeight / rect.height;
+  const pageIndex = Number(sheet.dataset.page);
+  const hits = hitsAt(sample().pages[pageIndex], x, y);
+  if (!hits.length) return;
+  const sameStack = openFrame && openFrame.page === pageIndex && hits.includes(openFrame.frame);
+  const next = sameStack && hits.length > 1 ? hits[(hits.indexOf(openFrame.frame) + 1) % hits.length] : hits[0];
+  const node = sheet.querySelector(`.frame[data-frame="${next}"]`);
+  if (node) node.classList.add("hover");
+});
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+}
+
+main();
+</script>
+</body>
+</html>

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>结构式提取</title>
+<style>
+  :root {
+    --ink: #1c2430;
+    --muted: #5c6b7a;
+    --line: #d9dee7;
+    --card: #fff;
+    --paper: #eef1f6;
+    --accent: #2457d6;
+    --ok: #0f7a45;
+    --ok-soft: #e5f6ec;
+    --bad: #b42318;
+    --bad-soft: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 18px;
+    background: white;
+    border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0; font-size: 18px; font-weight: 650; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+  header .tools { display: flex; gap: 8px; }
+  button {
+    font: inherit;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  button:disabled { color: #9aa6b2; cursor: not-allowed; background: #f3f5f8; }
+  main { padding: 16px 18px 28px; }
+  .drop {
+    min-height: calc(100vh - 120px);
+    border: 2px dashed #b7c3d6;
+    border-radius: 16px;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    padding: 32px;
+  }
+  .drop.over { border-color: var(--accent); background: #f3f7ff; }
+  .drop strong { font-size: 20px; font-weight: 650; }
+  .drop span { color: var(--muted); max-width: 420px; }
+  .drop img { max-width: min(720px, 100%); max-height: 360px; border-radius: 8px; }
+  .status { margin: 0 0 12px; color: var(--muted); }
+  .status.bad { color: var(--bad); }
+  .columns { display: grid; grid-template-columns: minmax(0, 1.4fr) 220px minmax(220px, 0.75fr); gap: 12px; align-items: start; }
+  .columns.open { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(220px, 0.75fr); }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 180px; }
+  .panel h2 { margin: 0 0 8px; font-size: 13px; font-weight: 650; }
+  .stage {
+    height: 520px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f4f6fa;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .stage .sheet { height: 100%; width: auto; max-width: 100%; aspect-ratio: var(--aspect); }
+  .stage .sheet img { width: 100%; height: 100%; object-fit: fill; }
+  .sheet { position: relative; margin: 0; }
+  .sheet img { display: block; width: 100%; height: auto; background: white; }
+  .frame { position: absolute; padding: 0; border: 2px solid transparent; background: transparent; }
+  .frame::after {
+    content: attr(data-label);
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 0 4px;
+  }
+  .frame.on { border-color: #c2410c; }
+  .frame.on::after { background: #c2410c; }
+  .pager { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .pager input { flex: 1; accent-color: var(--accent); }
+  .hint { color: var(--muted); }
+  .render img { width: 100%; height: auto; background: white; }
+  .card { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .toast {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: var(--ink);
+    color: white;
+    padding: 10px 14px;
+    border-radius: 8px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>结构式提取</h1>
+    <p>v0.1 beta</p>
+  </div>
+  <div class="tools">
+    <button type="button" id="open">打开文件</button>
+    <button type="button" id="snip" class="primary">截图</button>
+  </div>
+</header>
+<main id="main"></main>
+<div id="toast" class="toast"></div>
+<script>
+let job = null;
+let busy = false;
+let lit = 0;
+let openFrame = null;
+let openHits = [];
+
+function esc(text) {
+  return String(text ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[ch]));
+}
+
+function toast(message) {
+  const node = document.getElementById("toast");
+  if (!message) return;
+  node.textContent = message;
+  node.style.display = "block";
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { node.style.display = "none"; }, 3200);
+}
+
+function empty(extra) {
+  document.getElementById("main").innerHTML = `
+    <div class="drop" id="drop">
+      <strong>把 PDF 或图片拖到这里</strong>
+      <span>也可以点「截图」。窗口会先缩起，截完再回来，图自动贴上。</span>
+      ${extra ? `<span>${esc(extra)}</span>` : ""}
+    </div>`;
+}
+
+function working(name, url) {
+  const preview = url ? `<img src="${esc(url)}" alt="刚放进来的图">` : "";
+  document.getElementById("main").innerHTML = `
+    <div class="drop">
+      ${preview}
+      <strong>正在识别</strong>
+      <span>${esc(name)}。第一次会先把模型读进内存，这一份会慢一些。</span>
+    </div>`;
+}
+
+function sheetHtml(page, pageIndex) {
+  const frames = page.frames || [];
+  const width = page.width || 1;
+  const height = page.height || 1;
+  const boxes = frames.map((frame, frameIndex) => {
+    const box = frame.box;
+    const style = [
+      `left:${(100 * box[0] / width).toFixed(3)}%`,
+      `top:${(100 * box[1] / height).toFixed(3)}%`,
+      `width:${(100 * (box[2] - box[0]) / width).toFixed(3)}%`,
+      `height:${(100 * (box[3] - box[1]) / height).toFixed(3)}%`,
+    ].join(";");
+    const label = frameIndex + 1;
+    return `<button type="button" class="frame" style="${style}" data-page="${pageIndex}" data-frame="${frameIndex}" data-label="${label}" aria-label="识别框 ${label}"></button>`;
+  }).join("");
+  return `<div class="sheet" data-page="${pageIndex}" style="--aspect: ${width} / ${height}"><img src="${esc(page.source)}" width="${width}" height="${height}" alt="来源"><div class="frames">${boxes}</div></div>`;
+}
+
+function sourceHtml(page, pageIndex) {
+  const sheet = sheetHtml(page, pageIndex);
+  if (job.kind !== "pdf") return sheet;
+  const pages = job.pages || [];
+  const stage = `<div class="stage">${sheet}</div>`;
+  if (pages.length < 2) return stage;
+  return `${stage}<label class="pager"><span>第 ${page.page} 页</span><input type="range" min="0" max="${pages.length - 1}" value="${lit}" step="1" aria-label="文献页"><span>${lit + 1} / ${pages.length}</span></label>`;
+}
+
+function hitsAt(page, x, y) {
+  const hits = [];
+  (page.frames || []).forEach((frame, index) => {
+    const box = frame.box;
+    if (x < box[0] || y < box[1] || x > box[2] || y > box[3]) return;
+    hits.push({index, area: (box[2] - box[0]) * (box[3] - box[1])});
+  });
+  hits.sort((left, right) => left.area - right.area || left.index - right.index);
+  return hits.map((hit) => hit.index);
+}
+
+function result() {
+  const pages = job.pages || [];
+  const page = pages[lit] || pages[0];
+  if (!page) {
+    empty(job.reason || "没有结果。");
+    return;
+  }
+  const open = openFrame && openFrame.page === lit ? page.structures[page.frames[openFrame.frame].structure] : null;
+  const render = open && open.render
+    ? `<div class="render"><img src="${esc(open.render)}" alt="渲染"></div>`
+    : `<p class="hint">${open ? esc(open.reason || "这一框没有渲染。") : "点左边的识别框，展开对应的渲染。"}</p>`;
+  const overlap = openHits.length > 1 ? `<p class="hint">这里叠着 ${openHits.length} 个框。再点一次，换成下一个。</p>` : "";
+  const card = open ? cardHtml(open, lit, page.frames[openFrame.frame].structure) : `<p class="hint">选中一个框之后，这里可以复制。</p>`;
+  const tone = job.status === "ready" ? "status" : "status bad";
+  document.getElementById("main").innerHTML = `
+    <p class="${tone}">${esc(job.name || "")}　${esc(job.reason || "")}</p>
+    <div class="columns${open ? " open" : ""}">
+      <section class="panel"><h2>来源</h2>${sourceHtml(page, lit)}</section>
+      <section class="panel"><h2>渲染</h2>${overlap}${render}</section>
+      <section class="panel"><h2>结果</h2>${card}</section>
+    </div>`;
+  bindResult();
+}
+
+function cardHtml(structure, pageIndex, structureIndex) {
+  const conf = structure.confidence == null ? "" : `置信度 ${Number(structure.confidence).toFixed(2)}`;
+  const disabled = structure.ok && structure.mol ? "" : "disabled";
+  return `
+    <p class="meta">原子 ${structure.n_atoms || 0}${conf ? " · " + conf : ""}</p>
+    <p class="meta">${esc(structure.reason || "")}</p>
+    <div class="actions">
+      <button type="button" class="primary copy" data-kind="mol" data-page="${pageIndex}" data-structure="${structureIndex}" ${disabled}>复制 MOL</button>
+      <button type="button" class="copy" data-kind="smiles" data-page="${pageIndex}" data-structure="${structureIndex}" ${structure.smiles ? "" : "disabled"}>复制 SMILES</button>
+      <button type="button" class="copy" data-page="${pageIndex}" data-structure="${structureIndex}" data-kind="smarts" ${structure.smarts ? "" : "disabled"}>复制 SMARTS</button>
+      <button type="button" class="edit" disabled>人工编辑</button>
+    </div>`;
+}
+
+function bindResult() {
+  const range = document.querySelector(".pager input");
+  if (range) {
+    range.addEventListener("input", () => {
+      lit = Number(range.value);
+      openFrame = null;
+      openHits = [];
+      result();
+    });
+  }
+  document.querySelectorAll(".sheet").forEach((sheet) => {
+    sheet.addEventListener("click", (event) => {
+      const button = event.target.closest(".frame");
+      const img = sheet.querySelector("img");
+      const rect = img.getBoundingClientRect();
+      const pageIndex = Number(sheet.dataset.page);
+      const page = job.pages[pageIndex];
+      let hits = [];
+      if (button && event.detail === 0) {
+        hits = [Number(button.dataset.frame)];
+      } else {
+        const x = (event.clientX - rect.left) / rect.width * img.naturalWidth;
+        const y = (event.clientY - rect.top) / rect.height * img.naturalHeight;
+        hits = hitsAt(page, x, y);
+      }
+      if (!hits.length) return;
+      const same = openFrame && openFrame.page === pageIndex && hits.includes(openFrame.frame);
+      if (same && hits.length === 1) {
+        openFrame = null;
+        openHits = [];
+      } else if (same) {
+        const pos = hits.indexOf(openFrame.frame);
+        openFrame = {page: pageIndex, frame: hits[(pos + 1) % hits.length]};
+        openHits = hits;
+      } else {
+        openFrame = {page: pageIndex, frame: hits[0]};
+        openHits = hits;
+      }
+      result();
+    });
+  });
+  document.querySelectorAll(".copy").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const response = await fetch("/api/copy", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          page: Number(button.dataset.page),
+          structure: Number(button.dataset.structure),
+          kind: button.dataset.kind,
+        }),
+      });
+      const payload = await response.json();
+      toast(payload.message || "复制失败。");
+    });
+  });
+}
+
+async function take(response, name) {
+  job = await response.json();
+  busy = false;
+  lit = 0;
+  openFrame = null;
+  openHits = [];
+  if (!job.pages) job.pages = [];
+  if (!job.pages.length) empty(job.reason || "没有结果。");
+  else result();
+  if (job.status === "failed" && name) toast(job.reason || "识别失败。");
+}
+
+async function upload(file) {
+  if (busy) { toast("等这一份识别完。"); return; }
+  busy = true;
+  const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : "";
+  working(file.name, preview);
+  try {
+    const response = await fetch("/api/open?name=" + encodeURIComponent(file.name), {method: "POST", body: file});
+    await take(response, file.name);
+  } catch (error) {
+    busy = false;
+    toast("这次没有完成。");
+    empty();
+  }
+}
+
+document.getElementById("open").addEventListener("click", async () => {
+  if (busy) { toast("等这一份识别完。"); return; }
+  if (!window.pywebview || !window.pywebview.api) { toast("窗口还在启动。"); return; }
+  const picked = await window.pywebview.api.choose_file();
+  if (!picked || !picked.ok || !picked.path) return;
+  const name = picked.path.split(/[/\\]/).pop();
+  busy = true;
+  working(name, "");
+  try {
+    const response = await fetch("/api/open-path", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path: picked.path}),
+    });
+    await take(response, name);
+  } catch (error) {
+    busy = false;
+    toast("这次没有完成。");
+    empty();
+  }
+});
+
+document.getElementById("snip").addEventListener("click", async () => {
+  if (busy) { toast("等这一份识别完。"); return; }
+  if (!window.pywebview || !window.pywebview.api) { toast("窗口还在启动。"); return; }
+  const captured = await window.pywebview.api.capture();
+  if (!captured || !captured.ok) {
+    if (captured && captured.reason) toast(captured.reason);
+    return;
+  }
+  busy = true;
+  working(captured.name || "截图.png", captured.url);
+  try {
+    const response = await fetch("/api/recognize", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id: captured.id}),
+    });
+    await take(response, captured.name || "截图.png");
+  } catch (error) {
+    busy = false;
+    toast("这次没有完成。");
+    empty();
+  }
+});
+
+document.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  const drop = document.getElementById("drop");
+  if (drop) drop.classList.add("over");
+});
+
+document.addEventListener("dragleave", () => {
+  const drop = document.getElementById("drop");
+  if (drop) drop.classList.remove("over");
+});
+
+document.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  if (!file) { toast("没有拿到文件。请改用「打开文件」。"); return; }
+  upload(file);
+});
+
+empty();
+</script>
+</body>
+</html>

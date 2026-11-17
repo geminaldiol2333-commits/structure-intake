@@ -1,0 +1,22 @@
+feature: switch-scheme
+entry: raster button
+url: http://127.0.0.1:8766/
+title: 结构式提取原型
+
+button "矢量坐标"
+button "栅格坐标" active focused
+button "SMILES 重画"
+button "边外扩"
+button "MolNexTR"
+button "墨迹框"
+button "文献 PDF 有结构"
+button "复杂结构截图 拒绝 · 与预期不符"
+button "常见图片 有结构"
+button "无结构 PDF 拒绝"
+button "无结构图片 拒绝"
+
+summary: PDF 先按矢量框裁图，图片直接读入。MolScribe 输出带坐标的 mol，ChemDraw 只套 ACS1996，不 Clean。
+sample still selected: 文献 PDF
+heading: 来源
+heading: 渲染
+heading: 拒绝
