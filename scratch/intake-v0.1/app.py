@@ -33,6 +33,7 @@ PORT = 8766
 ALLOWED = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
 
 LOCK = threading.Lock()
+LAUNCH_FILE = ""
 MODELS = None
 JOB = {"id": "", "clips": {}, "view": None, "folder": "", "source": "", "kind": "", "serial": {}}
 PREVIEW_SCALE = 1.15   # preview pixels per PDF point
@@ -652,6 +653,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
+        if path == "/api/launch-file":
+            self.send_json({"path": LAUNCH_FILE})
+            return
         if path in ("/", "/index.html"):
             target = os.path.join(APP, "index.html")
         elif path.startswith("/jobs/"):
@@ -824,14 +828,35 @@ def check(path):
     print(view["status"], view["reason"], "atoms", atoms)
 
 
+def launch_file_from_argv():
+    for arg in sys.argv[1:]:
+        if arg.startswith("-"):
+            continue
+        if os.path.isfile(arg):
+            return os.path.abspath(arg)
+    return ""
+
+
 def main():
+    global LAUNCH_FILE
     os.makedirs(JOBS, exist_ok=True)
+    page.ensure_dirs()
     if len(sys.argv) >= 3 and sys.argv[1] == "--check":
         check(sys.argv[2])
         return
+    LAUNCH_FILE = launch_file_from_argv()
     try:
         server = bind()
     except OSError:
+        if LAUNCH_FILE:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "结构式提取已经在运行。\n请先关掉它，再从右键打开这个文件。",
+                TITLE,
+                0x40,
+            )
+            return
         import webview
         webview.create_window(TITLE, html="<p style='font-family:sans-serif;padding:24px'>提取窗口已经在运行。</p>", width=480, height=180)
         webview.start(gui="edgechromium")

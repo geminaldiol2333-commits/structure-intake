@@ -22,8 +22,26 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SAMPLES = os.path.join(ROOT, "samples")
 OUT = os.path.join(ROOT, "out")
 TESS = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-MOLSCRIBE_CKPT = r"D:\AI_Tools\models\MolScribe\swin_base_char_aux_1m680k.pth"
-MOLNEXTR_CKPT = r"D:\AI_Tools\models\MolNexTR\molnextr_best.pth"
+def checkpoint_path(env_name, filename, legacy):
+    """Prefer an explicit path, then a model already on this machine, then the installer folder."""
+    env = os.environ.get(env_name, "").strip().strip('"')
+    local = os.path.join(os.environ.get("LOCALAPPDATA", ""), "StructureIntake", "models", filename)
+    for path in (env, legacy, local):
+        if path and os.path.isfile(path):
+            return path
+    return local
+
+
+MOLSCRIBE_CKPT = checkpoint_path(
+    "MOLSCRIBE_CKPT",
+    "swin_base_char_aux_1m680k.pth",
+    r"D:\AI_Tools\models\MolScribe\swin_base_char_aux_1m680k.pth",
+)
+MOLNEXTR_CKPT = checkpoint_path(
+    "MOLNEXTR_CKPT",
+    "molnextr_best.pth",
+    r"D:\AI_Tools\models\MolNexTR\molnextr_best.pth",
+)
 
 ELEMENTS = {
     "H", "B", "C", "N", "O", "F", "Si", "P", "S", "Cl", "Br", "I", "Se",
@@ -895,6 +913,8 @@ class Models:
         from molscribe import MolScribe
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print("MolScribe", self.device, flush=True)
+        if not os.path.isfile(MOLSCRIBE_CKPT):
+            raise FileNotFoundError("找不到 MolScribe 模型：" + MOLSCRIBE_CKPT + "。请重新运行安装程序。")
         self.molscribe = MolScribe(MOLSCRIBE_CKPT, device=torch.device(self.device))
 
     def predict_image(self, path):
@@ -915,6 +935,8 @@ class Models:
         from MolNexTR.model import molnextr
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print("MolNexTR", self.device, flush=True)
+        if not os.path.isfile(MOLNEXTR_CKPT):
+            raise FileNotFoundError("找不到 MolNexTR 模型：" + MOLNEXTR_CKPT + "。请重新运行安装程序。")
         self.molnextr = molnextr(MOLNEXTR_CKPT, device=torch.device(self.device))
 
     def predict_molnextr(self, path):
@@ -1166,6 +1188,7 @@ def write_structure_files(folder, index, rendered, smiles, smarts):
     with open(smarts_path, "w", encoding="utf-8") as handle:
         handle.write(smarts)
     if rendered.get("clip"):
+        os.makedirs(os.path.dirname(clip_path), exist_ok=True)
         with open(clip_path, "wb") as handle:
             handle.write(rendered["clip"])
     return {

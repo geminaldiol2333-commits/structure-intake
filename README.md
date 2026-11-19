@@ -3,7 +3,19 @@
 从文献 PDF / 截图 / 图片中框选结构式、识别为分子，并在 ChemDraw（ACS1996 样式）里重绘，
 复制结果可直接粘贴回 ChemDraw。不经 SMILES 往返重排，坐标尽量来自原图。
 
-这是 OCSR-complex benchmark 项目衍生出的独立工具（private）。
+这是 OCSR-complex benchmark 项目衍生出的独立工具。
+
+## 安装
+
+下载 [StructureIntake-Setup.exe](https://github.com/geminaldiol2333-commits/structure-intake/releases/latest) 并运行。
+安装到当前用户目录，不需要管理员权限。向导里可以勾选：
+
+- 桌面快捷方式
+- 开始菜单
+- 右键菜单（PDF 和图片上显示「用结构式提取打开」）
+
+安装程序会准备 Python 3.14、CUDA 版 PyTorch、识别库，并下载约 2 GB 的模型（本机已经有的会跳过）。
+重绘需要本机已经安装 ChemDraw。识别使用 NVIDIA 显卡。
 
 ## 布局
 

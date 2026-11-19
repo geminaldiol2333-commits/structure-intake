@@ -1,0 +1,9 @@
+MolNexTR==1.0.0
+MolScribe==1.1.1
+rdkit==2026.3.1
+pywebview==6.2.1
+pywin32==311
+PyMuPDF==1.27.2.3
+opencv-python==4.13.0.92
+Pillow>=12
+numpy>=2

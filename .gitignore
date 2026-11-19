@@ -1,5 +1,7 @@
 # generated / working data
 jobs/
+pythonw.path
+installer/output/
 out/
 gt_pages/
 gt_check/
